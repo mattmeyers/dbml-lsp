@@ -7,19 +7,19 @@ type Error int
 // Defined error codes
 const (
 	// JSON RPC 2.0 Errors
-	ParseError           Error = -32700
-	InvalidRequest       Error = -32600
-	MethodNotFound       Error = -32601
-	InvalidParams        Error = -32602
-	InternalError        Error = -32603
-	serverErrorStart     Error = -32099
-	serverErrorEnd       Error = -32000
-	ServerNotInitialized Error = -32002
-	UnknownErrorCode     Error = -32001
+	ErrParseError           Error = -32700
+	ErrInvalidRequest       Error = -32600
+	ErrMethodNotFound       Error = -32601
+	ErrInvalidParams        Error = -32602
+	ErrInternalError        Error = -32603
+	ErrserverErrorStart     Error = -32099
+	ErrserverErrorEnd       Error = -32000
+	ErrServerNotInitialized Error = -32002
+	ErrUnknownErrorCode     Error = -32001
 
 	// LSP Specific Errors
-	RequestCancelled Error = -32800
-	ContentModified  Error = -32801
+	ErrRequestCancelled Error = -32800
+	ErrContentModified  Error = -32801
 )
 
 var errorStrings = map[int]string{
@@ -37,3 +37,24 @@ var errorStrings = map[int]string{
 }
 
 func (e Error) Error() string { return errorStrings[int(e)] }
+
+// ErrorResponse represents an error to be returned to the client.
+type ErrorResponse struct {
+	Code    Error       `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// NewErrorResponse creates a new error response. If the empty string is
+// passed for the msg parameter, then the Error's message is used.
+func NewErrorResponse(err Error, msg string, data interface{}) *ErrorResponse {
+	if msg == "" {
+		msg = err.Error()
+	}
+
+	return &ErrorResponse{
+		Code:    err,
+		Message: msg,
+		Data:    data,
+	}
+}

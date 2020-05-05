@@ -1,13 +1,14 @@
 package lsp
 
 import (
-	"bufio"
 	"encoding/json"
-	"errors"
-	"io"
+	"log"
 	"net"
-	"strconv"
 )
+
+// JSONRPCVersion is the required JSON RPC version for all requests and
+// responses.
+const JSONRPCVersion = "2.0"
 
 // Server represents a Language Server Protocol server.
 type Server struct {
@@ -22,6 +23,9 @@ func NewServer(addr string) *Server {
 		Handlers: make(map[string]Handler),
 	}
 }
+
+// Handler represents a function that can handle an LSP request.
+type Handler func(*Request, *ResponseMessage)
 
 // RegisterHandler adds the provided handler to the Server's handler map. If
 // a handler is already provided for the given method, it will be overwritten
@@ -68,51 +72,35 @@ func (s *Server) handleConn(conn net.Conn) {
 		return
 	}
 
-	h(req, conn)
-}
-
-// Handler represents a function that can handle an LSP request.
-type Handler func(*Request, ResponseWriter)
-
-// Request holds the information for an LSP request.
-type Request struct {
-	Headers map[string]string `json:"-"`
-	JSONRPC string            `json:"jsonrpc"`
-	ID      ID                `json:"id"`
-	Method  string            `json:"method"`
-	Params  json.RawMessage   `json:"params"`
-}
-
-func newRequest(r io.Reader) (*Request, error) {
-	reader := bufio.NewReader(r)
-
-	headers, err := parseHeaders(reader)
-	if err != nil {
-		return nil, err
+	// If the ID is not set, the request is considered a notification. We must
+	// not return a response according to the specification.
+	if req.ID == nil {
+		h(req, nil)
+		return
 	}
 
-	bLen, err := strconv.Atoi(headers["content-length"])
-	if err != nil {
-		return nil, errors.New("invalid Content-Length header value")
+	res := &ResponseMessage{
+		JSONRPC: JSONRPCVersion,
+		ID:      req.ID,
 	}
 
-	buf := make([]byte, bLen)
-	_, err = reader.Read(buf)
-	if err != nil {
-		return nil, err
+	h(req, res)
+
+	// The LSP specification requires the result field to be missing if an
+	// error is present. We force the result to be nil just in case the user
+	// set it.
+	if res.Error != nil {
+		res.Result = nil
 	}
 
-	var req Request
-	err = json.Unmarshal(buf, &req)
+	out, err := json.Marshal(res)
 	if err != nil {
-		return nil, err
+		log.Println("[ERROR]: " + err.Error())
+		return
 	}
-	req.Headers = headers
 
-	return &req, nil
-}
-
-// ResponseWriter is the interface for writing the response to a request.
-type ResponseWriter interface {
-	io.Writer
+	_, err = conn.Write(out)
+	if err != nil {
+		log.Println("[ERROR]: " + err.Error())
+	}
 }
